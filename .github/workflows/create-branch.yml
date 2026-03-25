@@ -46,21 +46,21 @@ jobs:
                 sha: latestSha,
               });
 
-              // 3. Issue のコメントでブランチを紐付け（マニュアルリンク）
-              await github.rest.issues.createComment({
+              // 3. ドラフト PR を自動作成（Development に表示させるため）
+              const prResult = await github.rest.pulls.create({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                issue_number: issueNumber,
-                body: `🔗 Branch created: \`${branchName}\`\n\nこのブランチで作業してください。`
+                title: `WIP: ${context.payload.issue.title}`,
+                head: branchName,
+                base: 'main',
+                draft: true, // ドラフト PR として作成
+                body: `Closes #${issueNumber}`
               });
 
               console.log(`Successfully created branch: ${branchName}`);
+              console.log(`Draft PR created: #${prResult.data.number}`);
 
             } catch (error) {
               console.error("Error:", error.message);
-              if (error.status === 422) {
-                console.log("Branch already exists.");
-              } else {
-                throw error;
-              }
+              throw error;
             }
