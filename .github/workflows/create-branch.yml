@@ -44,6 +44,9 @@ jobs:
                 sha: latestSha,
               });
 
+              // ブランチが API に反映されるまで待機
+              await new Promise(resolve => setTimeout(resolve, 2000));
+
               // 3. GraphQL で Issue とブランチをリンク
               const query = `
                 mutation LinkBranch($issueId: ID!, $branchName: String!, $repositoryId: ID!, $oid: GitObjectID!) {
