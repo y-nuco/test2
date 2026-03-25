@@ -1,0 +1,36 @@
+name: Auto Create Branch
+on:
+  issues:
+    types: [opened] # Issueが作成されたら実行
+
+jobs:
+  create_branch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create branch from issue
+        uses: actions/github-script@v6
+        with:
+          script: |
+            // 1. Issueの番号とタイトルを取得
+            const issueNumber = context.payload.issue.number;
+            const issueTitle = context.payload.issue.title
+              .toLowerCase()
+              .replace(/\s+/g, '-') // スペースをハイフンに
+              .replace(/[^a-z0-9-]/g, ''); // 記号を削除
+
+            const branchName = `issue-${issueNumber}-${issueTitle}`;
+
+            // 2. メインブランチ（main）の最新の状態を取得
+            const { data: ref } = await github.rest.git.getRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: 'heads/main', // あなたのメインブランチが 'master' ならここを書き換え
+            });
+
+            // 3. 新しいブランチを作成
+            await github.rest.git.createRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: `refs/heads/${branchName}`,
+              sha: ref.object.sha,
+            });
