@@ -4,7 +4,6 @@ on:
   issues:
     types: [opened]
 
-# Actionsにブランチ作成とIssue操作の権限を与える
 permissions:
   contents: write
   issues: write
@@ -21,8 +20,6 @@ jobs:
             const issueNumber = context.payload.issue.number;
             const repositoryId = context.payload.repository.node_id;
             
-            // ブランチ名の規則（ここを自由に変えられます）
-            // 例：feature/1-title-name
             const issueTitle = context.payload.issue.title
               .toLowerCase()
               .replace(/\s+/g, '-')
@@ -31,27 +28,29 @@ jobs:
             const branchName = `feature/${issueNumber}-${issueTitle || 'task'}`;
 
             try {
-              // 1. デフォルトブランチ（main）の最新のSHA（地点）を取得
+              // 1. デフォルトブランチ（main）の最新のSHA（OID）を取得
               const { data: ref } = await github.rest.git.getRef({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                ref: 'heads/main', // メインブランチがmasterならここを変更
+                ref: 'heads/main',
               });
+              const latestSha = ref.object.sha;
 
               // 2. 新しいブランチを作成
               await github.rest.git.createRef({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 ref: `refs/heads/${branchName}`,
-                sha: ref.object.sha,
+                sha: latestSha,
               });
 
-              // 3. Issueとブランチを紐付ける (Developmentセクションに表示させる)
-              const query = `mutation($issueId: ID!, $branchName: String!, $repositoryId: ID!) {
+              // 3. Issueとブランチを紐付ける (oidを追加して修正)
+              const query = `mutation($issueId: ID!, $branchName: String!, $repositoryId: ID!, $oid: GitObjectID!) {
                 createLinkedBranch(input: {
                   issueId: $issueId, 
                   name: $branchName, 
-                  repositoryId: $repositoryId
+                  repositoryId: $repositoryId,
+                  oid: $oid
                 }) {
                   clientMutationId
                 }
@@ -60,7 +59,8 @@ jobs:
               const variables = {
                 issueId: issueId,
                 branchName: branchName,
-                repositoryId: repositoryId
+                repositoryId: repositoryId,
+                oid: latestSha // ここで取得した最新のSHAを渡す
               };
 
               await github.graphql(query, variables);
@@ -68,7 +68,6 @@ jobs:
               console.log(`Successfully created and linked branch: ${branchName}`);
             } catch (error) {
               console.error("Error details:", error);
-              // すでにブランチが存在する場合などのエラーハンドリング
               if (error.status === 422) {
                 console.log("Branch already exists or invalid name.");
               } else {
