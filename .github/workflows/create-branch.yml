@@ -8,21 +8,20 @@ permissions:
   contents: write
   issues: write
   pull-requests: write
-  id-token: write
 
 jobs:
   create_branch:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Create and Link Branch
         uses: actions/github-script@v6
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const issueId = context.payload.issue.node_id;
             const issueNumber = context.payload.issue.number;
-            const repositoryId = context.payload.repository.node_id;
-            
             const issueTitle = context.payload.issue.title
               .toLowerCase()
               .replace(/\s+/g, '-')
@@ -31,7 +30,7 @@ jobs:
             const branchName = `feature/${issueNumber}-${issueTitle || 'task'}`;
 
             try {
-              // 1. デフォルトブランチ（main）の最新のSHA（OID）を取得
+              // 1. デフォルトブランチの最新SHAを取得
               const { data: ref } = await github.rest.git.getRef({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -47,39 +46,20 @@ jobs:
                 sha: latestSha,
               });
 
-              // 3. Issueとブランチを紐付ける
-              const query = `mutation CreateLinkedBranch($issueId: ID!, $branchName: String!, $repositoryId: ID!, $oid: GitObjectID!) {
-                createLinkedBranch(input: {
-                  issueId: $issueId
-                  name: $branchName
-                  repositoryId: $repositoryId
-                  oid: $oid
-                }) {
-                  linkedBranch {
-                    id
-                    ref {
-                      name
-                    }
-                  }
-                }
-              }`;
+              // 3. Issue のコメントでブランチを紐付け（マニュアルリンク）
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body: `🔗 Branch created: \`${branchName}\`\n\nこのブランチで作業してください。`
+              });
 
-              const variables = {
-                issueId: issueId,
-                branchName: branchName,
-                repositoryId: repositoryId,
-                oid: latestSha
-              };
-
-              const result = await github.graphql(query, variables);
-              console.log("Linked branch result:", result);
-              console.log(`Successfully created and linked branch: ${branchName}`);
+              console.log(`Successfully created branch: ${branchName}`);
 
             } catch (error) {
-              console.error("Error details:", error);
-              console.error("Error message:", error.message);
+              console.error("Error:", error.message);
               if (error.status === 422) {
-                console.log("Branch already exists or invalid name.");
+                console.log("Branch already exists.");
               } else {
                 throw error;
               }
