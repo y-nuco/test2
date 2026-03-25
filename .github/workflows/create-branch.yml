@@ -1,4 +1,4 @@
-name: Auto Create and Link Branch
+name: Auto Create Branch
 
 on:
   issues:
@@ -7,15 +7,11 @@ on:
 permissions:
   contents: write
   issues: write
-  pull-requests: write
 
 jobs:
   create_branch:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
       - name: Create and Link Branch
         uses: actions/github-script@v6
         with:
@@ -28,6 +24,8 @@ jobs:
               .replace(/[^a-z0-9-]/g, '');
             
             const branchName = `feature/${issueNumber}-${issueTitle || 'task'}`;
+            const issueId = context.payload.issue.node_id;
+            const repositoryId = context.payload.repository.node_id;
 
             try {
               // 1. デフォルトブランチの最新SHAを取得
@@ -46,21 +44,36 @@ jobs:
                 sha: latestSha,
               });
 
-              // 3. ドラフト PR を自動作成（Development に表示させるため）
-              const prResult = await github.rest.pulls.create({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                title: `WIP: ${context.payload.issue.title}`,
-                head: branchName,
-                base: 'main',
-                draft: true, // ドラフト PR として作成
-                body: `Closes #${issueNumber}`
+              // 3. GraphQL で Issue とブランチをリンク
+              const query = `
+                mutation LinkBranch($issueId: ID!, $branchName: String!, $repositoryId: ID!, $oid: GitObjectID!) {
+                  createLinkedBranch(input: {
+                    issueId: $issueId
+                    name: $branchName
+                    repositoryId: $repositoryId
+                    oid: $oid
+                  }) {
+                    linkedBranch {
+                      id
+                    }
+                  }
+                }
+              `;
+
+              const result = await github.graphql(query, {
+                issueId: issueId,
+                branchName: branchName,
+                repositoryId: repositoryId,
+                oid: latestSha
               });
 
-              console.log(`Successfully created branch: ${branchName}`);
-              console.log(`Draft PR created: #${prResult.data.number}`);
+              console.log(`Successfully linked branch: ${branchName}`);
+              console.log(JSON.stringify(result, null, 2));
 
             } catch (error) {
               console.error("Error:", error.message);
+              if (error.message.includes('NOT_FOUND')) {
+                console.log("ブランチがまだ API に反映されていない可能性があります");
+              }
               throw error;
             }
