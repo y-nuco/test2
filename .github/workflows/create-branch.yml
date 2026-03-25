@@ -11,26 +11,52 @@ jobs:
         uses: actions/github-script@v6
         with:
           script: |
-            // 1. Issueの番号とタイトルを取得
+            const issueId = context.payload.issue.node_id; // Issueの内部ID (GraphQL用)
             const issueNumber = context.payload.issue.number;
             const issueTitle = context.payload.issue.title
               .toLowerCase()
-              .replace(/\s+/g, '-') // スペースをハイフンに
-              .replace(/[^a-z0-9-]/g, ''); // 記号を削除
-
-            const branchName = `issue-${issueNumber}-${issueTitle}`;
-
-            // 2. メインブランチ（main）の最新の状態を取得
-            const { data: ref } = await github.rest.git.getRef({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              ref: 'heads/main', // あなたのメインブランチが 'master' ならここを書き換え
-            });
-
-            // 3. 新しいブランチを作成
-            await github.rest.git.createRef({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              ref: `refs/heads/${branchName}`,
-              sha: ref.object.sha,
-            });
+              .replace(/\s+/g, '-')
+              .replace(/[^a-z0-9-]/g, '');
+            
+            const branchName = `feature/${issueNumber}-${issueTitle}`;
+            const repositoryId = context.payload.repository.node_id;
+        
+            try {
+              // 1. メインブランチの最新SHAを取得
+              const { data: ref } = await github.rest.git.getRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: 'heads/main',
+              });
+        
+              // 2. 新しいブランチを作成
+              await github.rest.git.createRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: `refs/heads/${branchName}`,
+                sha: ref.object.sha,
+              });
+        
+              // 3. 【重要】作成したブランチをIssueに紐付ける (GraphQLを使用)
+              const query = `mutation($issueId: ID!, $branchName: String!, $repositoryId: ID!) {
+                createLinkedBranch(input: {
+                  issueId: $issueId, 
+                  name: $branchName, 
+                  repositoryId: $repositoryId
+                }) {
+                  clientMutationId
+                }
+              }`;
+        
+              const variables = {
+                issueId: issueId,
+                branchName: branchName,
+                repositoryId: repositoryId
+              };
+        
+              await github.graphql(query, variables);
+        
+              console.log(`Successfully created and linked branch: ${branchName}`);
+            } catch (error) {
+              console.error(error);
+            }
