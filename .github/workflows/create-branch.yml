@@ -76,3 +76,10 @@ jobs:
                 throw error;
               }
             }
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body: `✅ ブランチを作成し、このIssueと紐付けました！\n\n**Branch:** \`${branchName}\` \n\n次のコマンドで開発を開始できます：\n\`\`\`bash\ngit fetch origin && git checkout ${branchName}\n\`\`\``
+            });
